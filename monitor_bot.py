@@ -11,16 +11,16 @@ import logging
 import schedule
 
 """
-获取 7 个平台的关注者数据，并导出小红书创作者中心数据，同步更新到飞书。带定时功能（默认早 9 点，且可在飞书中 @ 机器人触发实时更新。
+定时运行，每24小时执行一次。并且支持@触发执行。
 """
 
 
 # 飞书机器人配置 - 需要你在飞书开放平台创建机器人应用
-FEISHU_APP_ID = "your_app_id"          # 飞书应用ID
-FEISHU_APP_SECRET = "your_app_secret"  # 飞书应用密钥
-FEISHU_CHAT_ID = "your_chat_id"        # 飞书群聊ID
-FEISHU_BOT_OPEN_ID = "your_bot_open_id"  # 飞书机器人OpenID
-
+# 这些值需要替换为你的机器人应用的实际值
+FEISHU_APP_ID = "cli_a80cb02e8f3d9013"
+FEISHU_APP_SECRET = "FRfOnYUU17kVQiNLglog5dKEFumFHhY3"
+FEISHU_CHAT_ID = "oc_a3a60d74d5dd4b65ce2325a751fc857d"  
+FEISHU_BOT_OPEN_ID = "ou_bf9cea8c7bde075a068418567e2fd707"
 
 # 获取当前脚本所在目录
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -39,6 +39,58 @@ logging.basicConfig(
         logging.StreamHandler()  # 控制台输出
     ]
 )
+
+# 将 auto_git_backup 函数定义移到这里
+def auto_git_backup(success_message="", script_type="数据同步"):
+    """自动Git备份函数"""
+    try:
+        # 切换到viyi_data目录
+        os.chdir('/Users/viyi/bili/viyi_data')
+        
+        # 检查是否有变更
+        result = subprocess.run(['git', 'status', '--porcelain'], 
+                              capture_output=True, text=True)
+        
+        if not result.stdout.strip():
+            logging.info("📁 没有文件变更，跳过Git备份")
+            return True, "没有文件变更"
+        
+        # 添加所有变更的文件
+        subprocess.run(['git', 'add', '.'], check=True)
+        
+        # 创建提交信息
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        commit_message = f"Auto backup: {script_type} - {timestamp}"
+        
+        if success_message:
+            # 从成功消息中提取处理的数据条数
+            if "总共成功处理了" in success_message:
+                lines = success_message.split('\n')
+                for line in lines:
+                    if "总共成功处理了" in line:
+                        commit_message += f" ({line.strip()})"
+                        break
+        
+        # 提交变更
+        subprocess.run(['git', 'commit', '-m', commit_message], check=True)
+        
+        # 推送到远程仓库
+        push_result = subprocess.run(['git', 'push'], 
+                                   capture_output=True, text=True)
+        
+        if push_result.returncode == 0:
+            logging.info(f"✅ Git备份成功: {commit_message}")
+            return True, f"备份成功: {commit_message}"
+        else:
+            logging.error(f"❌ Git推送失败: {push_result.stderr}")
+            return False, f"推送失败: {push_result.stderr}"
+            
+    except subprocess.CalledProcessError as e:
+        logging.error(f"❌ Git操作失败: {e}")
+        return False, f"Git操作失败: {e}"
+    except Exception as e:
+        logging.error(f"❌ 备份异常: {e}")
+        return False, f"备份异常: {e}"
 
 class RedbookMonitor:
     def __init__(self):
@@ -221,32 +273,22 @@ class RedbookMonitor:
                             success_message += f"\n{line.strip()}"
                             break
                 
-                # 检查输出中是否有微信公众号相关的错误信息
-                output_text = result.stdout + result.stderr
-                
-                # 检查是否有微信公众号登录问题
-                wechat_login_issues = [
-                    "微信公众号数据获取可能存在问题",
-                    "登录状态异常",
-                    "检测到登录页面",
-                    "扫码登录"
-                ]
-                
-                has_wechat_issues = any(issue in output_text for issue in wechat_login_issues)
-                
-                if has_wechat_issues:
-                    success_message += "\n⚠️ 注意：微信公众号登录状态可能异常，请检查登录状态"
-                
-                # 尝试解析状态输出
-                if "STATUS:SUCCESS" in result.stdout:
-                    status_lines = [line for line in result.stdout.split('\n') if line.startswith('STATUS:')]
-                    if status_lines:
-                        success_message += f"\n详细状态: {status_lines[-1]}"
-                
                 logging.info("✅ 关注者数据脚本运行成功")
                 self.send_message(success_message, chat_id)
-                return True
                 
+                # 🆕 添加自动Git备份
+                backup_success, backup_message = auto_git_backup(success_message, "关注者数据同步")
+                if backup_success:
+                    backup_notification = f"📁 {backup_message}"
+                    self.send_message(backup_notification, chat_id)
+                    logging.info(f"📁 {backup_message}")
+                else:
+                    backup_error = f"⚠️ Git备份失败: {backup_message}"
+                    self.send_message(backup_error, chat_id)
+                    logging.warning(f"⚠️ {backup_message}")
+                
+                return True
+            
             else:
                 # 脚本运行失败
                 error_message = (
@@ -598,59 +640,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# 在类定义前添加Git相关函数
-import subprocess
-import os
-from datetime import datetime
-
-def auto_git_backup(success_message="", script_type="数据同步"):
-    """自动Git备份函数"""
-    try:
-        # 切换到viyi_data目录
-        os.chdir('/Users/viyi/bili/viyi_data')
-        
-        # 检查是否有变更
-        result = subprocess.run(['git', 'status', '--porcelain'], 
-                              capture_output=True, text=True)
-        
-        if not result.stdout.strip():
-            logging.info("📁 没有文件变更，跳过Git备份")
-            return True, "没有文件变更"
-        
-        # 添加所有变更的文件
-        subprocess.run(['git', 'add', '.'], check=True)
-        
-        # 创建提交信息
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        commit_message = f"Auto backup: {script_type} - {timestamp}"
-        
-        if success_message:
-            # 从成功消息中提取处理的数据条数
-            if "总共成功处理了" in success_message:
-                lines = success_message.split('\n')
-                for line in lines:
-                    if "总共成功处理了" in line:
-                        commit_message += f" ({line.strip()})"
-                        break
-        
-        # 提交变更
-        subprocess.run(['git', 'commit', '-m', commit_message], check=True)
-        
-        # 推送到远程仓库
-        push_result = subprocess.run(['git', 'push'], 
-                                   capture_output=True, text=True)
-        
-        if push_result.returncode == 0:
-            logging.info(f"✅ Git备份成功: {commit_message}")
-            return True, f"备份成功: {commit_message}"
-        else:
-            logging.error(f"❌ Git推送失败: {push_result.stderr}")
-            return False, f"推送失败: {push_result.stderr}"
-            
-    except subprocess.CalledProcessError as e:
-        logging.error(f"❌ Git操作失败: {e}")
-        return False, f"Git操作失败: {e}"
-    except Exception as e:
-        logging.error(f"❌ 备份异常: {e}")
-        return False, f"备份异常: {e}"
