@@ -18,13 +18,17 @@ import schedule
 # 飞书机器人配置 - 需要你在飞书开放平台创建机器人应用
 FEISHU_APP_ID = "your_app_id"          # 飞书应用ID
 FEISHU_APP_SECRET = "your_app_secret"  # 飞书应用密钥
-FEISHU_APP_TOKEN = "your_app_token"    # 飞书应用令牌
-FEISHU_TABLE_ID = "your_table_id"      # 飞书多维表格子表ID
+FEISHU_CHAT_ID = "your_chat_id"        # 飞书群聊ID
+FEISHU_BOT_OPEN_ID = "your_bot_open_id"  # 飞书机器人OpenID
+
+
+# 获取当前脚本所在目录
+current_dir = os.path.dirname(os.path.abspath(__file__))
 
 # 小红书脚本路径
-REDBOOK_SCRIPT_PATH = "/Users/viyi/bili/viyi_data/redbook.py"
+REDBOOK_SCRIPT_PATH = os.path.join(current_dir, "redbook.py")
 # 关注者数据脚本路径
-FOLLOWERS_SCRIPT_PATH = "/Users/viyi/bili/viyi_data/followers_feishu.py"
+FOLLOWERS_SCRIPT_PATH = os.path.join(current_dir, "followers_feishu.py")
 
 # 配置日志 - 同时输出到控制台和文件
 logging.basicConfig(
