@@ -11,16 +11,15 @@ import logging
 import schedule
 
 """
-定时运行，每24小时执行一次。并且支持@触发执行。
+获取 7 个平台的关注者数据，并导出小红书创作者中心数据，同步更新到飞书。带定时功能（默认早 9 点，且可在飞书中 @ 机器人触发实时更新。
 """
 
 
 # 飞书机器人配置 - 需要你在飞书开放平台创建机器人应用
-# 这些值需要替换为你的机器人应用的实际值
-FEISHU_APP_ID = "cli_a80cb02e8f3d9013"
-FEISHU_APP_SECRET = "FRfOnYUU17kVQiNLglog5dKEFumFHhY3"
-FEISHU_CHAT_ID = "oc_a3a60d74d5dd4b65ce2325a751fc857d"  
-FEISHU_BOT_OPEN_ID = "ou_bf9cea8c7bde075a068418567e2fd707"
+FEISHU_APP_ID = "your_app_id"          # 飞书应用ID
+FEISHU_APP_SECRET = "your_app_secret"  # 飞书应用密钥
+FEISHU_CHAT_ID = "your_chat_id"        # 飞书群聊ID
+FEISHU_BOT_OPEN_ID = "your_bot_open_id"  # 飞书机器人OpenID
 
 # 获取当前脚本所在目录
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -44,8 +43,8 @@ logging.basicConfig(
 def auto_git_backup(success_message="", script_type="数据同步"):
     """自动Git备份函数"""
     try:
-        # 切换到viyi_data目录
-        os.chdir('/Users/viyi/bili/viyi_data')
+        # 切换到当前文件所在目录
+        os.chdir(current_dir)
         
         # 检查是否有变更
         result = subprocess.run(['git', 'status', '--porcelain'], 
