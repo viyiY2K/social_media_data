@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-微信公众号粉丝数获取工具 - 精确元素定位版
+微信公众号粉丝数获取工具
 基于MediaCrawler的实现思路
 """
 
@@ -123,17 +123,39 @@ class WeChatMPCrawler:
             return False
             
     async def _is_logged_in(self) -> bool:
-        """检查是否已登录"""
+        """检查是否已登录 - 增强版"""
         try:
-            # 检查是否存在"总用户数"或"内容管理"文本
-            login_check = await self.context_page.evaluate("""
+            # 多重检查登录状态
+            login_checks = await self.context_page.evaluate("""
                 () => {
                     const bodyText = document.body.textContent || '';
-                    return bodyText.includes('总用户数') || bodyText.includes('内容管理');
+                    const url = window.location.href;
+                    
+                    return {
+                        hasUserData: bodyText.includes('总用户数') || bodyText.includes('内容管理'),
+                        hasLoginPage: bodyText.includes('扫码登录') || bodyText.includes('请使用微信扫描'),
+                        isCorrectDomain: url.includes('mp.weixin.qq.com'),
+                        hasAccountInfo: bodyText.includes('公众号') && !bodyText.includes('登录')
+                    };
                 }
             """)
             
-            return login_check
+            # 如果在登录页面，返回false
+            if login_checks.get('hasLoginPage', False):
+                print("🔐 检测到登录页面，需要重新登录")
+                return False
+                
+            # 如果有用户数据且在正确域名，返回true
+            if (login_checks.get('hasUserData', False) and 
+                login_checks.get('isCorrectDomain', False)):
+                return True
+                
+            # 如果有账号信息且不在登录状态
+            if login_checks.get('hasAccountInfo', False):
+                return True
+                
+            return False
+            
         except Exception as e:
             print(f"❌ 检查登录状态时出错: {e}")
             return False

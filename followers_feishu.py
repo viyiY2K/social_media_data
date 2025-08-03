@@ -366,14 +366,22 @@ def main():
     
     # 获取微信公众号数据
     if WECHAT_ACCOUNTS is not None:  # 即使列表为空也尝试获取
-        wechat_data, wechat_errors = get_wechat_data_wrapper()
-        all_data.extend(wechat_data)
-        if wechat_errors:
-            # 检查是否是错误代码
-            if any(error.startswith('WECHAT_') for error in wechat_errors):
-                error_summary['wechat'] = wechat_errors
-            else:
-                failed_accounts['wechat'] = wechat_errors
+        # 获取微信公众号数据
+        if WECHAT_ACCOUNTS is not None:
+            wechat_data, wechat_errors = get_wechat_data_wrapper()
+            all_data.extend(wechat_data)
+            if wechat_errors:
+                # 检查是否是错误代码
+                if any(error.startswith('WECHAT_') for error in wechat_errors):
+                    error_summary['wechat'] = wechat_errors
+                else:
+                    failed_accounts['wechat'] = wechat_errors
+            
+            # 添加微信公众号特殊检查
+            wechat_success_count = len([item for item in wechat_data if item['平台'] == '微信公众号' and item['粉丝数'] > 0])
+            if wechat_success_count == 0 and not wechat_errors:
+                print("⚠️ 微信公众号数据获取可能存在问题（无数据且无错误）")
+                failed_accounts['wechat'] = ['登录状态异常或数据获取失败']
     
     # 获取知乎数据
     if ZHIHU_USER_SLUGS:
@@ -453,6 +461,31 @@ def main():
         print("\n🎉 多平台数据收集完成！")
     else:
         print("\n⚠️ 未获取到任何有效数据")
+    
+    # 输出详细状态信息供monitor_bot检查
+    print("\n=== 状态信息 ===")
+    if successful_data:
+        platforms = set(item['平台'] for item in successful_data)
+        print(f"STATUS:SUCCESS - 成功获取平台: {', '.join(platforms)}")
+        
+        # 检查微信公众号是否成功
+        wechat_data = [item for item in successful_data if item['平台'] == '微信公众号']
+        if not wechat_data and 'wechat' in (list(failed_accounts.keys()) + list(error_summary.keys())):
+            print("STATUS:WARNING - 微信公众号数据获取失败")
+    else:
+        print("STATUS:FAILED - 未获取到任何数据")
+        
+        # 特别检查微信公众号失败情况
+        if 'wechat' in failed_accounts or 'wechat' in error_summary:
+            print("STATUS:WECHAT_FAILED - 微信公众号登录状态异常或数据获取失败")
+    
+    # 返回状态信息供外部调用
+    return {
+        'successful_data': successful_data,
+        'failed_accounts': failed_accounts,
+        'error_summary': error_summary,
+        'feishu_success': feishu_success if 'feishu_success' in locals() else False
+    }
 
 if __name__ == "__main__":
     main()  # 直接调用同步函数，不使用 asyncio.run()

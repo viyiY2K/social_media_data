@@ -8,9 +8,10 @@ import time
 import threading
 from datetime import datetime
 import logging
+import schedule
 
 """
-获取 7 个平台的关注者数据，并导出小红书创作者中心数据，同步更新到飞书。带定时功能，且可在飞书中 @ 机器人触发。
+获取 7 个平台的关注者数据，并导出小红书创作者中心数据，同步更新到飞书。带定时功能（默认早 9 点，且可在飞书中 @ 机器人触发实时更新。
 """
 
 
@@ -20,13 +21,10 @@ FEISHU_APP_SECRET = "your_app_secret"  # 飞书应用密钥
 FEISHU_APP_TOKEN = "your_app_token"    # 飞书应用令牌
 FEISHU_TABLE_ID = "your_table_id"      # 飞书多维表格子表ID
 
-# 获取当前脚本所在目录
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-
 # 小红书脚本路径
-REDBOOK_SCRIPT_PATH = os.path.join(SCRIPT_DIR, "../social_media_data/redbook.py")
+REDBOOK_SCRIPT_PATH = "/Users/viyi/bili/viyi_data/redbook.py"
 # 关注者数据脚本路径
-FOLLOWERS_SCRIPT_PATH = os.path.join(SCRIPT_DIR, "../social_media_data/followers_feishu.py")
+FOLLOWERS_SCRIPT_PATH = "/Users/viyi/bili/viyi_data/followers_feishu.py"
 
 # 配置日志 - 同时输出到控制台和文件
 logging.basicConfig(
@@ -219,6 +217,22 @@ class RedbookMonitor:
                             success_message += f"\n{line.strip()}"
                             break
                 
+                # 检查输出中是否有微信公众号相关的错误信息
+                output_text = result.stdout + result.stderr
+                
+                # 检查是否有微信公众号登录问题
+                wechat_login_issues = [
+                    "微信公众号数据获取可能存在问题",
+                    "登录状态异常",
+                    "检测到登录页面",
+                    "扫码登录"
+                ]
+                
+                has_wechat_issues = any(issue in output_text for issue in wechat_login_issues)
+                
+                if has_wechat_issues:
+                    success_message += "\n⚠️ 注意：微信公众号登录状态可能异常，请检查登录状态"
+                
                 # 尝试解析状态输出
                 if "STATUS:SUCCESS" in result.stdout:
                     status_lines = [line for line in result.stdout.split('\n') if line.startswith('STATUS:')]
@@ -274,8 +288,43 @@ class RedbookMonitor:
             self.send_message(exception_message, chat_id)
             return False
     
+    def start_daily_monitoring(self, run_time="09:00"):
+        """开始每日定时监控"""
+        if self.is_monitoring:
+            logging.warning("⚠️ 监控已在运行中")
+            return
+            
+        self.is_monitoring = True
+        
+        # 清除之前的任务
+        schedule.clear()
+        
+        # 设置每天指定时间运行
+        schedule.every().day.at(run_time).do(self._scheduled_task)
+        
+        def monitor_loop():
+            while self.is_monitoring:
+                try:
+                    schedule.run_pending()
+                    time.sleep(60)  # 每分钟检查一次
+                except Exception as e:
+                    logging.error(f"❌ 监控循环异常: {e}")
+                    time.sleep(60)
+        
+        monitor_thread = threading.Thread(target=monitor_loop, daemon=True)
+        monitor_thread.start()
+        logging.info(f"✅ 每日定时监控已启动，运行时间: {run_time}")
+        
+        # 发送启动通知
+        self.send_message(f"🕘 每日定时监控已启动\n运行时间: 每天 {run_time}")
+    
+    def _scheduled_task(self):
+        """定时任务执行函数"""
+        logging.info("🕘 每日定时任务触发")
+        self.run_redbook_script("每日定时监控(09:00)")
+    
     def start_monitoring(self, interval_hours=24):
-        """开始定时监控"""
+        """开始定时监控（保持原有方法兼容性）"""
         if self.is_monitoring:
             logging.warning("⚠️ 监控已在运行中")
             return
@@ -306,6 +355,7 @@ class RedbookMonitor:
         """停止定时监控"""
         if self.is_monitoring:
             self.is_monitoring = False
+            schedule.clear()  # 清除所有定时任务
             logging.info("🛑 定时监控已停止")
         else:
             logging.warning("⚠️ 监控未在运行")
@@ -452,7 +502,7 @@ def start_lark_websocket_client():
 
 def main():
     """主函数"""
-    print("小红书数据同步监控机器人 (长连接版本)")
+    print("数据同步监控机器人 (长连接版本)")
     print("=" * 50)
     print("请先配置以下参数:")
     print(f"1. FEISHU_APP_ID: {FEISHU_APP_ID}")
@@ -466,19 +516,20 @@ def main():
     
     print("选择运行模式:")
     print("1. 运行一次")
-    print("2. 定时监控 (每24小时运行一次)")
+    print("2. 每日定时监控 (每天早上9点运行)")
     print("3. 自定义监控间隔")
     print("4. 启动长连接监听 (支持@机器人触发)")
-    print("5. 启动完整服务 (定时监控 + 长连接监听)")
+    print("5. 启动完整服务 (每日定时监控 + 长连接监听)")
+    print("6. 自定义每日运行时间")
     
-    choice = input("请选择 (1-5): ").strip()
+    choice = input("请选择 (1-6): ").strip()
     
     if choice == "1":
         monitor.run_once()
     elif choice == "2":
-        print("🔍 开始定时监控 (每24小时运行一次)...")
+        print("🕘 开始每日定时监控 (每天早上9点运行)...")
         print("按 Ctrl+C 停止监控")
-        monitor.start_monitoring(24)
+        monitor.start_daily_monitoring("09:00")
         try:
             while True:
                 time.sleep(1)
@@ -508,13 +559,13 @@ def main():
         except KeyboardInterrupt:
             print("\n👋 长连接监听已停止")
     elif choice == "5":
-        print("🚀 启动完整服务 (定时监控 + 长连接监听)...")
+        print("🚀 启动完整服务 (每日定时监控 + 长连接监听)...")
         print("🔗 长连接监听: 支持@机器人触发")
-        print("🔍 定时监控: 每24小时运行一次")
+        print("🕘 每日定时监控: 每天早上9点运行")
         print("按 Ctrl+C 停止所有服务")
         
-        # 启动定时监控
-        monitor.start_monitoring(24)
+        # 启动每日定时监控
+        monitor.start_daily_monitoring("09:00")
         
         # 启动长连接监听
         try:
@@ -522,6 +573,22 @@ def main():
         except KeyboardInterrupt:
             monitor.stop_monitoring()
             print("\n👋 所有服务已停止")
+    elif choice == "6":
+        try:
+            run_time = input("请输入每日运行时间 (格式: HH:MM，如 09:30): ").strip()
+            # 验证时间格式
+            datetime.strptime(run_time, "%H:%M")
+            print(f"🕘 开始每日定时监控 (每天{run_time}运行)...")
+            print("按 Ctrl+C 停止监控")
+            monitor.start_daily_monitoring(run_time)
+            try:
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                monitor.stop_monitoring()
+                print("\n👋 监控已停止")
+        except ValueError:
+            print("❌ 无效的时间格式，请使用 HH:MM 格式")
     else:
         print("❌ 无效的选择")
 
